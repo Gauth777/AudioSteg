@@ -65,6 +65,27 @@
         loadingOverlay.style.display = "flex";
     }
 
+    async function fetchJsonSafely(url, options) {
+        const res = await fetch(url, options);
+        if (res.status === 413) {
+            throw new Error("File too large (413). Serverless hosts limit uploads (e.g. Vercel max 4.5 MB).");
+        }
+        if (res.status === 504) {
+            throw new Error("Request timed out (504). Processing took too long for the serverless function.");
+        }
+        
+        let data;
+        try {
+            data = await res.json();
+        } catch (e) {
+            if (!res.ok) {
+                throw new Error(`Server error (${res.status}). Server returned non-JSON response.`);
+            }
+            throw new Error("Failed to parse JSON response from server.");
+        }
+        return { res, data };
+    }
+
     function hideLoading() {
         loadingOverlay.style.display = "none";
     }
@@ -198,8 +219,7 @@
             const fd = new FormData();
             fd.append("audio", file);
             try {
-                const res = await fetch("/api/capacity", { method: "POST", body: fd });
-                const data = await res.json();
+                const { res, data } = await fetchJsonSafely("/api/capacity", { method: "POST", body: fd });
                 if (data.error) throw new Error(data.error);
                 embedCapacity = data.capacity;
                 capacityDuration.textContent = data.duration + "s";
@@ -263,8 +283,7 @@
         embedResult.style.display = "none";
 
         try {
-            const res = await fetch("/api/embed", { method: "POST", body: fd });
-            const data = await res.json();
+            const { res, data } = await fetchJsonSafely("/api/embed", { method: "POST", body: fd });
 
             if (!res.ok || data.error) throw new Error(data.error || "Embedding failed");
 
@@ -311,8 +330,7 @@
         extractResult.style.display = "none";
 
         try {
-            const res = await fetch("/api/extract", { method: "POST", body: fd });
-            const data = await res.json();
+            const { res, data } = await fetchJsonSafely("/api/extract", { method: "POST", body: fd });
 
             if (!res.ok || data.error) throw new Error(data.error || "Extraction failed");
 
