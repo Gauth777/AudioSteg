@@ -3,9 +3,6 @@
 **Production-grade desktop tool** for embedding and extracting AES-encrypted
 messages within WAV audio files using LSB steganography.
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![Flask](https://img.shields.io/badge/Flask-3.x-green)
-![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
 
@@ -22,32 +19,6 @@ messages within WAV audio files using LSB steganography.
 | **Activity Logging**   | All operations logged to `activity.log`                        |
 | **Dark Cyber UI**      | Glassmorphism, neon accents, animated grid background          |
 | **PyInstaller Ready**  | Bundle as a standalone `.exe`                                  |
-
----
-
-## Quick Start
-
-### 1. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Run the application
-
-```bash
-python app.py
-```
-
-This starts a Flask server on `http://127.0.0.1:5000` and **auto-opens your
-browser**.
-
-### 3. Use the tool
-
-| Step | Action |
-|------|--------|
-| **Embed** | Upload a `.wav` file → type your secret message → set a password → click **EMBED MESSAGE** → download the stego file |
-| **Extract** | Upload the stego `.wav` → enter the same password → click **EXTRACT MESSAGE** |
 
 ---
 
@@ -116,8 +87,3 @@ The executable will be in `dist/AudioSteg.exe`.
 - PBKDF2 with 480 000 iterations provides strong resistance against brute-force
   attacks (OWASP 2023 recommendation).
 
----
-
-## License
-
-MIT
