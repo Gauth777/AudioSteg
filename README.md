@@ -50,21 +50,6 @@ AudioSteg/
 
 ---
 
-## Building a Standalone `.exe`
-
-```bash
-pip install pyinstaller
-pyinstaller --onefile --add-data "templates;templates" --add-data "static;static" --name AudioSteg --icon=NONE app.py
-```
-
-The executable will be in `dist/AudioSteg.exe`.
-
-> **Note:** On first run, Windows Defender may briefly scan the new `.exe`.
-> The `resource_path()` helper in `app.py` ensures templates and static files
-> are correctly resolved when running from a PyInstaller bundle.
-
----
-
 ## API Endpoints
 
 | Method | Endpoint               | Description                        |
