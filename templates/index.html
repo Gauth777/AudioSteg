@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AudioSteg — Advanced Audio Steganography</title>
+    <meta name="description" content="Production-grade audio steganography tool for embedding and extracting AES-encrypted messages in WAV files using LSB encoding.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <!-- Animated background grid -->
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow--1" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow--2" aria-hidden="true"></div>
+
+    <!-- Header -->
+    <header id="main-header">
+        <div class="header-inner">
+            <div class="logo-group">
+                <div class="logo-icon-wrap">
+                    <svg class="logo-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="2" y="2" width="28" height="28" rx="6" stroke="currentColor" stroke-width="2"/>
+                        <path d="M16 8v4m0 8v4m-8-8h4m8 0h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <circle cx="16" cy="16" r="4" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <h1>AUDIOSTEG</h1>
+                    <span class="logo-sub">ADVANCED AUDIO STEGANOGRAPHY</span>
+                </div>
+            </div>
+            <div class="header-meta">
+                <span class="status-chip" id="server-status">
+                    <span class="status-dot"></span>
+                    ONLINE
+                </span>
+                <span class="version-tag">v2.0</span>
+            </div>
+        </div>
+        <div class="header-line" aria-hidden="true"></div>
+    </header>
+
+    <!-- Main content -->
+    <main id="main-content">
+        <div class="panels-grid">
+
+            <!-- ═══════════════ EMBED PANEL ═══════════════ -->
+            <section id="embed-panel" class="panel">
+                <div class="panel-chrome">
+                    <div class="panel-title-row">
+                        <span class="panel-badge panel-badge--embed">E</span>
+                        <h2 class="panel-title">Embed Message</h2>
+                    </div>
+                    <span class="panel-status" id="embed-status">READY</span>
+                </div>
+
+                <div class="panel-body">
+                    <!-- File upload -->
+                    <div class="field" id="embed-field-file">
+                        <label for="embed-file" class="field-label">WAV Audio File</label>
+                        <div class="file-drop" id="embed-drop-zone" tabindex="0" role="button" aria-label="Upload WAV audio file">
+                            <input type="file" id="embed-file" accept=".wav" class="file-input">
+                            <div class="file-drop__prompt" id="embed-file-prompt">
+                                <svg class="file-drop__icon" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L8 8m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                                <span>Drop <strong>.wav</strong> file here or click to browse</span>
+                            </div>
+                            <div class="file-drop__info" id="embed-file-info" style="display:none">
+                                <span class="file-drop__name" id="embed-file-name"></span>
+                                <button type="button" class="file-drop__clear" id="embed-file-clear" aria-label="Remove file">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Capacity display -->
+                    <div class="capacity-card" id="capacity-card" style="display:none">
+                        <div class="capacity-header">
+                            <span class="capacity-label">CAPACITY ANALYSIS</span>
+                            <span class="capacity-pct" id="capacity-pct">0%</span>
+                        </div>
+                        <div class="capacity-bar-track">
+                            <div class="capacity-bar-fill" id="capacity-bar-fill"></div>
+                        </div>
+                        <div class="capacity-meta">
+                            <span id="capacity-payload">Payload: 0 B</span>
+                            <span id="capacity-max">Max: 0 chars</span>
+                        </div>
+                        <div class="capacity-details" id="capacity-details">
+                            <span id="capacity-duration"></span>
+                            <span id="capacity-channels"></span>
+                            <span id="capacity-rate"></span>
+                        </div>
+                    </div>
+
+                    <!-- Message -->
+                    <div class="field">
+                        <label for="embed-message" class="field-label">Secret Message</label>
+                        <textarea id="embed-message" class="field-textarea" placeholder="Type or paste the message you want to hide…" rows="5"></textarea>
+                        <div class="field-footer">
+                            <span class="char-counter" id="embed-char-count">0 characters</span>
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="field">
+                        <label for="embed-password" class="field-label">Encryption Password</label>
+                        <div class="password-wrap">
+                            <input type="password" id="embed-password" class="field-input" placeholder="Enter a strong passphrase" autocomplete="new-password">
+                            <button type="button" class="pw-toggle" data-target="embed-password" aria-label="Toggle password visibility">
+                                <svg class="eye-icon" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Action -->
+                    <button id="embed-btn" class="action-btn action-btn--embed" disabled>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>EMBED MESSAGE</span>
+                    </button>
+
+                    <!-- Result -->
+                    <div id="embed-result" class="result-box" style="display:none"></div>
+                </div>
+            </section>
+
+            <!-- ═══════════════ EXTRACT PANEL ═══════════════ -->
+            <section id="extract-panel" class="panel">
+                <div class="panel-chrome">
+                    <div class="panel-title-row">
+                        <span class="panel-badge panel-badge--extract">X</span>
+                        <h2 class="panel-title">Extract Message</h2>
+                    </div>
+                    <span class="panel-status" id="extract-status">READY</span>
+                </div>
+
+                <div class="panel-body">
+                    <!-- File upload -->
+                    <div class="field" id="extract-field-file">
+                        <label for="extract-file" class="field-label">Stego Audio File</label>
+                        <div class="file-drop" id="extract-drop-zone" tabindex="0" role="button" aria-label="Upload stego WAV file">
+                            <input type="file" id="extract-file" accept=".wav" class="file-input">
+                            <div class="file-drop__prompt" id="extract-file-prompt">
+                                <svg class="file-drop__icon" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L8 8m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                                <span>Drop <strong>stego .wav</strong> file or click to browse</span>
+                            </div>
+                            <div class="file-drop__info" id="extract-file-info" style="display:none">
+                                <span class="file-drop__name" id="extract-file-name"></span>
+                                <button type="button" class="file-drop__clear" id="extract-file-clear" aria-label="Remove file">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="field">
+                        <label for="extract-password" class="field-label">Decryption Password</label>
+                        <div class="password-wrap">
+                            <input type="password" id="extract-password" class="field-input" placeholder="Enter the password used during embedding" autocomplete="current-password">
+                            <button type="button" class="pw-toggle" data-target="extract-password" aria-label="Toggle password visibility">
+                                <svg class="eye-icon" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Action -->
+                    <button id="extract-btn" class="action-btn action-btn--extract" disabled>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none"><path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" stroke-width="2"/></svg>
+                        <span>EXTRACT MESSAGE</span>
+                    </button>
+
+                    <!-- Result -->
+                    <div id="extract-result" class="result-box" style="display:none"></div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer id="main-footer">
+        <span>AudioSteg v2.0 — Secure Edition</span>
+        <span class="footer-sep">|</span>
+        <span>AES-256 · PBKDF2 · SHA-256 · LSB</span>
+    </footer>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display:none" aria-live="assertive">
+        <div class="loading-card">
+            <div class="spinner">
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring spinner-ring--inner"></div>
+            </div>
+            <span class="loading-label" id="loading-label">PROCESSING…</span>
+            <span class="loading-sub" id="loading-sub">Please wait</span>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

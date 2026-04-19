@@ -1,0 +1,4 @@
+flask>=3.0
+cryptography>=42.0
+numpy>=1.26
+pyinstaller>=6.0
