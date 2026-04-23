@@ -75,6 +75,16 @@
                         </div>
                     </div>
 
+                    <!-- Algorithm -->
+                    <div class="field">
+                        <label for="embed-algorithm" class="field-label">Steganography Algorithm</label>
+                        <select id="embed-algorithm" class="field-input" style="appearance: none; background-image: url('data:image/svg+xml;utf8,<svg fill=%22%238899aa%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>'); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer;">
+                            <option value="random_lsb">Randomized LSB (High Stealth)</option>
+                            <option value="sequential_lsb">Sequential LSB (Low Stealth)</option>
+                            <option value="metadata">Metadata Chunk (No Audio Degradation)</option>
+                        </select>
+                    </div>
+
                     <!-- Capacity display -->
                     <div class="capacity-card" id="capacity-card" style="display:none">
                         <div class="capacity-header">
@@ -175,6 +185,41 @@
                 </div>
             </section>
 
+            <!-- ═══════════════ ANALYZE PANEL ═══════════════ -->
+            <section id="analyze-panel" class="panel panel-full">
+                <div class="panel-chrome">
+                    <div class="panel-title-row">
+                        <span class="panel-badge panel-badge--analyze">A</span>
+                        <h2 class="panel-title">Analyze Audio</h2>
+                    </div>
+                    <span class="panel-status" id="analyze-status">READY</span>
+                </div>
+
+                <div class="panel-body">
+                    <div class="field" id="analyze-field-file">
+                        <label for="analyze-file" class="field-label">WAV Audio File to Analyze</label>
+                        <div class="file-drop" id="analyze-drop-zone" tabindex="0" role="button" aria-label="Upload WAV audio file for analysis">
+                            <input type="file" id="analyze-file" accept=".wav" class="file-input">
+                            <div class="file-drop__prompt" id="analyze-file-prompt">
+                                <svg class="file-drop__icon" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L8 8m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                                <span>Drop <strong>.wav</strong> file here or click to browse</span>
+                            </div>
+                            <div class="file-drop__info" id="analyze-file-info" style="display:none">
+                                <span class="file-drop__name" id="analyze-file-name"></span>
+                                <button type="button" class="file-drop__clear" id="analyze-file-clear" aria-label="Remove file">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="analyze-btn" class="action-btn action-btn--analyze" disabled>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>RUN ANALYSIS</span>
+                    </button>
+
+                    <div id="analyze-result" class="result-box" style="display:none"></div>
+                </div>
+            </section>
+
         </div>
     </main>
 
@@ -182,7 +227,7 @@
     <footer id="main-footer">
         <span>AudioSteg v2.0 — Secure Edition</span>
         <span class="footer-sep">|</span>
-        <span>AES-256 · PBKDF2 · SHA-256 · LSB</span>
+        <span>AES-128 (Fernet) · PBKDF2 · SHA-256 · LSB</span>
     </footer>
 
     <!-- Loading overlay -->

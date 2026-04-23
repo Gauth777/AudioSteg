@@ -229,9 +229,10 @@ class PayloadManager:
 
 
 # ---------------------------------------------------------------------------
-# LSBEngine
+# Steg Engines
 # ---------------------------------------------------------------------------
-class LSBEngine:
+
+class RandomLSBEngine:
     """Least-Significant-Bit embedding / extraction with seeded PRNG.
 
     Embedding positions are determined by a pseudo-random permutation of
@@ -246,30 +247,8 @@ class LSBEngine:
         rng = np.random.RandomState(seed)
         return rng.permutation(np.arange(num_samples, dtype=np.int32))
 
-    # ---- Embedding ---------------------------------------------------------
-
     @staticmethod
-    def embed(
-        samples: np.ndarray,
-        data: bytes,
-        seed: int,
-    ) -> np.ndarray:
-        """Embed *data* into *samples* using randomised LSB positions.
-
-        Parameters
-        ----------
-        samples : np.ndarray[int16]
-            Audio sample buffer (modified copy is returned).
-        data : bytes
-            Binary payload (length-prefix + JSON).
-        seed : int
-            PRNG seed for position generation.
-
-        Returns
-        -------
-        np.ndarray[int16]
-            Modified sample buffer with data embedded.
-        """
+    def embed(samples: np.ndarray, data: bytes, seed: int) -> np.ndarray:
         bits = np.unpackbits(np.frombuffer(data, dtype=np.uint8))
         num_bits = len(bits)
 
@@ -279,41 +258,27 @@ class LSBEngine:
                 f"{len(samples)} sample slots available"
             )
 
-        positions = LSBEngine._get_permutation(seed, len(samples))[:num_bits]
+        positions = RandomLSBEngine._get_permutation(seed, len(samples))[:num_bits]
 
         modified = samples.copy()
         mask = np.int16(-2)  # 0xFFFE — clears the LSB
         modified[positions] = (modified[positions] & mask) | bits.astype(np.int16)
 
         logger.info(
-            "LSB embed: %d bits into %d samples (%.2f%% used)",
+            "Random LSB embed: %d bits into %d samples (%.2f%% used)",
             num_bits,
             len(samples),
             num_bits / len(samples) * 100,
         )
         return modified
 
-    # ---- Extraction --------------------------------------------------------
-
     @staticmethod
     def extract(samples: np.ndarray, seed: int) -> bytes:
-        """Extract a length-prefixed payload from *samples*.
-
-        The first 32 embedded bits encode the JSON payload length
-        (big-endian uint32).  The engine then reads exactly that many
-        additional bytes.
-
-        Returns
-        -------
-        bytes
-            ``length_prefix ‖ json_payload`` (same format produced by
-            :meth:`PayloadManager.encode`).
-        """
         num_samples = len(samples)
         if num_samples < 32:
             raise ValueError("Audio file too short for extraction")
 
-        positions = LSBEngine._get_permutation(seed, num_samples)
+        positions = RandomLSBEngine._get_permutation(seed, num_samples)
 
         # Phase 1 — read length prefix (32 bits = 4 bytes) ..................
         prefix_bits = (samples[positions[:32]] & 1).astype(np.uint8)
@@ -339,9 +304,143 @@ class LSBEngine:
         payload_bytes = np.packbits(payload_bits).tobytes()[:json_len]
 
         logger.info(
-            "LSB extract: %d payload bytes from %d samples", json_len, num_samples
+            "Random LSB extract: %d payload bytes from %d samples", json_len, num_samples
         )
         return prefix_bytes + payload_bytes
+
+
+class SequentialLSBEngine:
+    """Least-Significant-Bit embedding / extraction in sequential order.
+    
+    Easier to detect statistically, but faster and deterministic.
+    """
+
+    @staticmethod
+    def embed(samples: np.ndarray, data: bytes, seed: int) -> np.ndarray:
+        # Seed is ignored for sequential embedding
+        bits = np.unpackbits(np.frombuffer(data, dtype=np.uint8))
+        num_bits = len(bits)
+
+        if num_bits > len(samples):
+            raise ValueError(
+                f"Payload too large: needs {num_bits} bits but only "
+                f"{len(samples)} sample slots available"
+            )
+
+        modified = samples.copy()
+        mask = np.int16(-2)  # 0xFFFE — clears the LSB
+        modified[:num_bits] = (modified[:num_bits] & mask) | bits.astype(np.int16)
+
+        logger.info(
+            "Sequential LSB embed: %d bits into %d samples (%.2f%% used)",
+            num_bits,
+            len(samples),
+            num_bits / len(samples) * 100,
+        )
+        return modified
+
+    @staticmethod
+    def extract(samples: np.ndarray, seed: int) -> bytes:
+        num_samples = len(samples)
+        if num_samples < 32:
+            raise ValueError("Audio file too short for extraction")
+
+        # Phase 1 — read length prefix (32 bits = 4 bytes)
+        prefix_bits = (samples[:32] & 1).astype(np.uint8)
+        prefix_bytes = np.packbits(prefix_bits).tobytes()
+        json_len = struct.unpack(">I", prefix_bytes)[0]
+
+        # Sanity guards
+        if json_len == 0 or json_len > 50_000_000:
+            raise ValueError(
+                "Extracted length prefix is invalid — wrong password or "
+                "file does not contain hidden data"
+            )
+
+        total_bits = 32 + json_len * 8
+        if total_bits > num_samples:
+            raise ValueError(
+                f"Payload claims {json_len} bytes but audio only has "
+                f"{num_samples} samples — data corrupted or wrong password"
+            )
+
+        # Phase 2 — read JSON payload
+        payload_bits = (samples[32:total_bits] & 1).astype(np.uint8)
+        payload_bytes = np.packbits(payload_bits).tobytes()[:json_len]
+
+        logger.info(
+            "Sequential LSB extract: %d payload bytes from %d samples", json_len, num_samples
+        )
+        return prefix_bytes + payload_bytes
+
+
+class MetadataEngine:
+    """Metadata-based embedding using a custom RIFF chunk.
+    
+    This does not alter audio samples. It appends a custom 'steg' chunk
+    to the WAV file structure. It is less stealthy to forensic tools,
+    but completely preserves audio fidelity.
+    """
+    
+    CHUNK_ID = b"steg"
+
+    @staticmethod
+    def embed(filepath: str, data: bytes) -> None:
+        """Append a custom RIFF chunk to the WAV file."""
+        with open(filepath, "r+b") as f:
+            f.seek(0)
+            header = f.read(12)
+            if len(header) < 12 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                raise ValueError("Not a valid WAV file for metadata embedding")
+            
+            # Read existing main RIFF size
+            riff_size = struct.unpack("<I", header[4:8])[0]
+            
+            # Prepare our chunk: ID (4) + Size (4, LE) + Data + Pad byte if odd
+            chunk_size = len(data)
+            pad = b"\\x00" if chunk_size % 2 != 0 else b""
+            chunk_header = MetadataEngine.CHUNK_ID + struct.pack("<I", chunk_size)
+            steg_chunk = chunk_header + data + pad
+            
+            # Append to file
+            f.seek(0, 2)
+            f.write(steg_chunk)
+            
+            # Update RIFF size to include our new chunk
+            new_riff_size = riff_size + len(steg_chunk)
+            f.seek(4)
+            f.write(struct.pack("<I", new_riff_size))
+            
+        logger.info("Metadata embed: %d bytes into custom RIFF chunk", len(data))
+
+    @staticmethod
+    def extract(filepath: str) -> bytes:
+        """Extract the payload from the custom RIFF chunk."""
+        with open(filepath, "rb") as f:
+            header = f.read(12)
+            if len(header) < 12 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                raise ValueError("Not a valid WAV file")
+            
+            while True:
+                chunk_id = f.read(4)
+                if not chunk_id or len(chunk_id) < 4:
+                    break
+                
+                size_data = f.read(4)
+                if not size_data or len(size_data) < 4:
+                    break
+                
+                chunk_size = struct.unpack("<I", size_data)[0]
+                
+                if chunk_id == MetadataEngine.CHUNK_ID:
+                    data = f.read(chunk_size)
+                    logger.info("Metadata extract: found %d bytes in custom chunk", len(data))
+                    return data
+                else:
+                    # Skip to next chunk (respecting padding)
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+                    
+        raise ValueError("No steganography chunk found in metadata")
 
 
 # ---------------------------------------------------------------------------

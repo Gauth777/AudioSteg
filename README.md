@@ -1,7 +1,7 @@
 # AudioSteg — Advanced Audio Steganography
 
 **Production-grade desktop tool** for embedding and extracting AES-encrypted
-messages within WAV audio files using LSB steganography.
+messages within WAV audio files using multiple steganography algorithms.
 
 
 ---
@@ -10,15 +10,16 @@ messages within WAV audio files using LSB steganography.
 
 | Feature                | Description                                                    |
 |------------------------|----------------------------------------------------------------|
+| **Multi-Algorithm**    | Choose between Randomized LSB, Sequential LSB, and Metadata Chunk embedding. |
 | **AES Encryption**     | Fernet (AES-128-CBC + HMAC-SHA256) via `cryptography`          |
 | **PBKDF2 Key Derivation** | 480 000 iterations of PBKDF2-HMAC-SHA256                    |
-| **Randomised LSB**     | Password-seeded PRNG determines embedding positions            |
+| **Steganalysis**       | Audio analysis module to detect LSB ratio anomalies, chi-square deviations, and metadata tampering. |
 | **Structured Payload** | Length-prefixed JSON with `{salt, data, hash}`                 |
 | **Integrity Check**    | SHA-256 hash verified on extraction                            |
 | **Capacity Analysis**  | Real-time payload vs capacity visualisation                    |
-| **Activity Logging**   | All operations logged to `activity.log`                        |
+| **Automated Reports**  | JSON reports generated for embedding, extraction, and analysis.|
 | **Dark Cyber UI**      | Glassmorphism, neon accents, animated grid background          |
-| **PyInstaller Ready**  | Bundle as a standalone `.exe`                                  |
+| **PyInstaller Ready**  | Bundle as a standalone `.exe` using the included `build.py` script. |
 
 ---
 
@@ -27,7 +28,9 @@ messages within WAV audio files using LSB steganography.
 ```
 AudioSteg/
 ├── app.py              # Flask server + REST API
-├── steg_engine.py      # Core engine (6 modular classes)
+├── steg_engine.py      # Core engine (Strategy-based steganography engines)
+├── analysis.py         # Steganalysis and anomaly detection
+├── build.py            # PyInstaller build script
 ├── requirements.txt    # Python dependencies
 ├── activity.log        # Auto-generated operation log
 ├── templates/
@@ -45,8 +48,11 @@ AudioSteg/
 | `EncryptionManager`     | Fernet encrypt / decrypt                        |
 | `IntegrityManager`      | SHA-256 hash + verify                           |
 | `PayloadManager`        | JSON payload encode / decode with length prefix  |
-| `LSBEngine`             | Randomised LSB embed / extract                  |
+| `RandomLSBEngine`       | Randomised LSB embed / extract (High Stealth)   |
+| `SequentialLSBEngine`   | Sequential LSB embed / extract (Low Stealth)    |
+| `MetadataEngine`        | Custom RIFF Chunk embed / extract               |
 | `AudioProcessor`        | WAV read / write / capacity analysis             |
+| `AudioAnalyzer`         | Statistical and structural analysis             |
 
 ---
 
@@ -58,7 +64,9 @@ AudioSteg/
 | POST   | `/api/capacity`        | Analyse WAV capacity               |
 | POST   | `/api/embed`           | Embed encrypted message            |
 | POST   | `/api/extract`         | Extract and decrypt message        |
+| POST   | `/api/analyze`         | Analyse audio for steganography    |
 | GET    | `/api/download/<file>` | Download stego WAV                 |
+| GET    | `/api/report/<file>`   | Download JSON operation report     |
 
 ---
 
@@ -71,4 +79,3 @@ AudioSteg/
   deterministic per password but independent of the encryption salt.
 - PBKDF2 with 480 000 iterations provides strong resistance against brute-force
   attacks (OWASP 2023 recommendation).
-

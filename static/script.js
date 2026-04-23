@@ -20,6 +20,7 @@
     const embedFileClear  = $("#embed-file-clear");
     const embedMessage    = $("#embed-message");
     const embedPassword   = $("#embed-password");
+    const embedAlgorithm  = $("#embed-algorithm");
     const embedBtn        = $("#embed-btn");
     const embedResult     = $("#embed-result");
     const embedStatus     = $("#embed-status");
@@ -47,6 +48,17 @@
     const extractResult    = $("#extract-result");
     const extractStatus    = $("#extract-status");
 
+    // Analyze
+    const analyzeFile      = $("#analyze-file");
+    const analyzeDropZone  = $("#analyze-drop-zone");
+    const analyzeFilePrompt = $("#analyze-file-prompt");
+    const analyzeFileInfo  = $("#analyze-file-info");
+    const analyzeFileName  = $("#analyze-file-name");
+    const analyzeFileClear = $("#analyze-file-clear");
+    const analyzeBtn       = $("#analyze-btn");
+    const analyzeResult    = $("#analyze-result");
+    const analyzeStatus    = $("#analyze-status");
+
     // Loading
     const loadingOverlay   = $("#loading-overlay");
     const loadingLabel     = $("#loading-label");
@@ -56,6 +68,7 @@
     let embedCapacity = null;   // { max_message_chars, max_payload_bytes, total_samples }
     let embedAudioFile = null;
     let extractAudioFile = null;
+    let analyzeAudioFile = null;
 
     /* ─── Helpers ─────────────────────────────────────────────── */
 
@@ -159,6 +172,11 @@
         extractBtn.disabled = !ok;
     }
 
+    function validateAnalyze() {
+        const ok = analyzeAudioFile != null;
+        analyzeBtn.disabled = !ok;
+    }
+
     /* ─── File Upload Handlers ────────────────────────────────── */
 
     function setupFileDrop(dropZone, input, prompt, info, nameEl, clearBtn, onSelect, onClear) {
@@ -248,6 +266,14 @@
         ()     => { extractAudioFile = null; validateExtract(); }
     );
 
+    // Analyze file
+    setupFileDrop(
+        analyzeDropZone, analyzeFile, analyzeFilePrompt,
+        analyzeFileInfo, analyzeFileName, analyzeFileClear,
+        (file) => { analyzeAudioFile = file; validateAnalyze(); },
+        ()     => { analyzeAudioFile = null; validateAnalyze(); }
+    );
+
     /* ─── Input Listeners ─────────────────────────────────────── */
 
     embedMessage.addEventListener("input", () => {
@@ -277,6 +303,7 @@
         fd.append("audio", embedAudioFile);
         fd.append("message", embedMessage.value);
         fd.append("password", embedPassword.value);
+        if (embedAlgorithm) fd.append("algorithm", embedAlgorithm.value);
 
         showLoading("EMBEDDING…", "Encrypting and hiding your message");
         setStatus(embedStatus, "PROCESSING", "active");
@@ -296,10 +323,16 @@
                     <span class="result-stat">Payload: <span class="result-stat__value">${formatBytes(data.payload_bytes)}</span></span>
                     <span class="result-stat">Capacity used: <span class="result-stat__value">${data.usage_percent}%</span></span>
                 </div>
-                <a class="download-btn" href="/api/download/${encodeURIComponent(data.download_filename)}" download>
-                    <svg viewBox="0 0 24 24" fill="none"><path d="M12 4v12m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                    DOWNLOAD STEGO FILE
-                </a>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <a class="download-btn" href="/api/download/${encodeURIComponent(data.download_filename)}" download>
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M12 4v12m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                        DOWNLOAD STEGO FILE
+                    </a>
+                    <a class="download-btn" href="/api/report/${encodeURIComponent(data.download_filename)}" download style="background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-subtle);">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        REPORT
+                    </a>
+                </div>
             `;
             embedResult.style.display = "";
 
@@ -342,7 +375,13 @@
                 <div class="result-stats">
                     <span class="result-stat">Length: <span class="result-stat__value">${data.message_length} chars</span></span>
                     <span class="result-stat">Integrity: <span class="result-stat__value">${data.integrity_verified ? "✓ Verified" : "✗ Failed"}</span></span>
+                    ${data.algorithm ? `<span class="result-stat">Algorithm: <span class="result-stat__value">${escapeHtml(data.algorithm)}</span></span>` : ""}
                 </div>
+                ${data.report_filename ? `
+                <a class="download-btn" href="/api/report/${encodeURIComponent(data.report_filename)}" download style="margin-top: 16px;">
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M12 4v12m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    DOWNLOAD REPORT
+                </a>` : ""}
             `;
             extractResult.style.display = "";
 
@@ -354,6 +393,72 @@
                 <p>${escapeHtml(err.message)}</p>
             `;
             extractResult.style.display = "";
+        } finally {
+            hideLoading();
+        }
+    });
+
+    /* ─── Analyze ─────────────────────────────────────────────── */
+
+    analyzeBtn.addEventListener("click", async () => {
+        if (analyzeBtn.disabled) return;
+
+        const fd = new FormData();
+        fd.append("audio", analyzeAudioFile);
+
+        showLoading("ANALYZING…", "Scanning for steganographic signatures");
+        setStatus(analyzeStatus, "PROCESSING", "active");
+        analyzeResult.style.display = "none";
+
+        try {
+            const { res, data } = await fetchJsonSafely("/api/analyze", { method: "POST", body: fd });
+
+            if (!res.ok || data.error) throw new Error(data.error || "Analysis failed");
+
+            // Define classes based on suspicion score
+            let resultClass = "result-box";
+            if (data.suspicion_score > 75) resultClass += " result--error";
+            else if (data.suspicion_score > 35) resultClass += " result--warning";
+            else resultClass += " result--success";
+
+            setStatus(analyzeStatus, "SUCCESS", "success");
+            analyzeResult.className = resultClass;
+            
+            let findingsHtml = "";
+            if (data.findings && data.findings.length > 0) {
+                findingsHtml = "<ul style='margin-top: 10px; margin-left: 20px; font-size: 0.82rem; line-height: 1.6;'>";
+                data.findings.forEach(f => {
+                    findingsHtml += `<li><strong style="color: var(--accent-${f.type === 'critical' ? 'red' : f.type === 'warning' ? 'amber' : 'cyan'});">[${f.type.toUpperCase()}]</strong> ${escapeHtml(f.message)}</li>`;
+                });
+                findingsHtml += "</ul>";
+            } else {
+                findingsHtml = "<p style='margin-top: 10px; font-size: 0.82rem;'>No suspicious signatures detected.</p>";
+            }
+
+            analyzeResult.innerHTML = `
+                <div class="result-title">✓ ANALYSIS COMPLETE</div>
+                <div class="result-stats">
+                    <span class="result-stat">Verdict: <span class="result-stat__value">${escapeHtml(data.verdict)}</span></span>
+                    <span class="result-stat">Suspicion Score: <span class="result-stat__value">${data.suspicion_score}/100</span></span>
+                    <span class="result-stat">LSB Ratio: <span class="result-stat__value">${data.stats.lsb_ratio !== undefined ? data.stats.lsb_ratio.toFixed(4) : "N/A"}</span></span>
+                </div>
+                ${findingsHtml}
+                ${data.report_filename ? `
+                <a class="download-btn" href="/api/report/${encodeURIComponent(data.report_filename)}" download style="margin-top: 16px;">
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M12 4v12m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    DOWNLOAD FULL REPORT
+                </a>` : ""}
+            `;
+            analyzeResult.style.display = "";
+
+        } catch (err) {
+            setStatus(analyzeStatus, "ERROR", "error");
+            analyzeResult.className = "result-box result--error";
+            analyzeResult.innerHTML = `
+                <div class="result-title">✗ ANALYSIS FAILED</div>
+                <p>${escapeHtml(err.message)}</p>
+            `;
+            analyzeResult.style.display = "";
         } finally {
             hideLoading();
         }

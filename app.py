@@ -34,9 +34,12 @@ from steg_engine import (
     EncryptionManager,
     IntegrityManager,
     PayloadManager,
-    LSBEngine,
+    RandomLSBEngine,
+    SequentialLSBEngine,
+    MetadataEngine,
     AudioProcessor,
 )
+from analysis import AudioAnalyzer
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +111,25 @@ def _cleanup(path: str) -> None:
         pass
 
 
+def _cleanup_loop():
+    """Background thread to remove stale files (older than 15 minutes)."""
+    import time
+    while True:
+        try:
+            now = time.time()
+            for filename in os.listdir(UPLOAD_DIR):
+                path = os.path.join(UPLOAD_DIR, filename)
+                if os.path.isfile(path) and os.stat(path).st_mtime < now - 900:
+                    try:
+                        os.remove(path)
+                        logger.info("Cleaned up stale file: %s", filename)
+                    except OSError:
+                        pass
+        except Exception as e:
+            logger.error("Cleanup loop error: %s", e)
+        time.sleep(300)  # run every 5 minutes
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -167,6 +189,7 @@ def api_embed():
     f = request.files["audio"]
     message = request.form.get("message", "").strip()
     password = request.form.get("password", "").strip()
+    algorithm = request.form.get("algorithm", "random_lsb").strip()
 
     if not message:
         return jsonify({"error": "Message cannot be empty"}), 400
@@ -197,8 +220,8 @@ def api_embed():
         payload_bits = len(payload) * 8
         logger.info("Embed: payload = %d bytes (%d bits)", len(payload), payload_bits)
 
-        # 5. Capacity check
-        if payload_bits > len(samples):
+        # 5. Capacity check (for LSB modes)
+        if algorithm in ("random_lsb", "sequential_lsb") and payload_bits > len(samples):
             capacity = AudioProcessor.compute_capacity(len(samples))
             raise ValueError(
                 f"Message too large. Payload needs {len(payload)} bytes "
@@ -206,16 +229,42 @@ def api_embed():
                 f"Use a longer audio file or a shorter message."
             )
 
-        # 6. Embed
-        modified = LSBEngine.embed(samples, payload, prng_seed)
-
-        # 7. Write output
+        # 6. Output preparation
         out_name = f"stego_{uuid.uuid4().hex[:8]}.wav"
         output_path = os.path.join(UPLOAD_DIR, out_name)
-        AudioProcessor.write_wav(output_path, modified, params)
 
-        usage_pct = round(payload_bits / len(samples) * 100, 2)
-        logger.info("Embed: success — %.2f%% capacity used", usage_pct)
+        # 7. Embed
+        if algorithm == "random_lsb":
+            modified = RandomLSBEngine.embed(samples, payload, prng_seed)
+            AudioProcessor.write_wav(output_path, modified, params)
+        elif algorithm == "sequential_lsb":
+            modified = SequentialLSBEngine.embed(samples, payload, prng_seed)
+            AudioProcessor.write_wav(output_path, modified, params)
+        elif algorithm == "metadata":
+            AudioProcessor.write_wav(output_path, samples, params) # Write base clean WAV
+            MetadataEngine.embed(output_path, payload) # Append chunk
+        else:
+            raise ValueError(f"Unknown algorithm: {algorithm}")
+
+        usage_pct = round(payload_bits / len(samples) * 100, 2) if algorithm != "metadata" else 0.0
+        logger.info("Embed: success using %s — %.2f%% capacity used", algorithm, usage_pct)
+
+        # Save a JSON report alongside the output file for download
+        report_data = {
+            "operation": "embed",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "original_filename": f.filename,
+            "stego_filename": out_name,
+            "algorithm_used": algorithm,
+            "payload_bytes": len(payload),
+            "payload_bits": payload_bits,
+            "total_samples": len(samples),
+            "capacity_usage_percent": usage_pct,
+            "message_length_chars": len(message),
+            "status": "success"
+        }
+        with open(output_path + ".report.json", "w") as rf:
+            json.dump(report_data, rf, indent=2)
 
         return jsonify({
             "success": True,
@@ -225,6 +274,7 @@ def api_embed():
             "total_samples": len(samples),
             "usage_percent": usage_pct,
             "message_length": len(message),
+            "algorithm": algorithm
         })
 
     except Exception as exc:
@@ -256,54 +306,86 @@ def api_extract():
         samples, params = AudioProcessor.read_wav(path)
         logger.info("Extract: loaded %s (%d samples)", f.filename, len(samples))
 
-        # 2. Derive PRNG seed (for position reconstruction)
+        # 2. Derive PRNG seed
         prng_seed = KeyDerivationManager.derive_prng_seed(password)
 
-        # 3. Extract raw payload
-        raw = LSBEngine.extract(samples, prng_seed)
-        logger.info("Extract: raw payload = %d bytes", len(raw))
+        raw_payload = None
+        detected_algorithm = None
+        last_error = None
 
-        # 4. Decode structured payload
-        payload = PayloadManager.decode(raw)
+        # Try engines in order: Metadata -> Random LSB -> Sequential LSB
+        engines_to_try = [
+            ("metadata", lambda: MetadataEngine.extract(path)),
+            ("random_lsb", lambda: RandomLSBEngine.extract(samples, prng_seed)),
+            ("sequential_lsb", lambda: SequentialLSBEngine.extract(samples, prng_seed))
+        ]
 
-        # 5. Integrity verification
-        encrypted_token = payload["data"].encode("ascii")
-        expected_hash = payload["hash"]
+        payload = None
+        message = None
 
-        if not IntegrityManager.verify_hash(encrypted_token, expected_hash):
-            raise ValueError(
-                "Integrity verification failed — data has been tampered with "
-                "or the wrong password was used"
-            )
-        logger.info("Extract: SHA-256 integrity check PASSED")
+        for alg_name, extract_func in engines_to_try:
+            try:
+                raw = extract_func()
+                decoded = PayloadManager.decode(raw)
+                
+                # Verify Integrity immediately to confirm this is the right payload
+                encrypted_token = decoded["data"].encode("ascii")
+                expected_hash = decoded["hash"]
+                
+                if not IntegrityManager.verify_hash(encrypted_token, expected_hash):
+                    raise ValueError("Integrity mismatch")
 
-        # 6. Derive encryption key (with stored salt)
-        salt = base64.b64decode(payload["salt"])
-        encryption_key, _ = KeyDerivationManager.derive_encryption_key(password, salt)
+                # Decrypt
+                salt = base64.b64decode(decoded["salt"])
+                encryption_key, _ = KeyDerivationManager.derive_encryption_key(password, salt)
+                message = EncryptionManager.decrypt(encrypted_token, encryption_key)
+                
+                # If we got here, success!
+                detected_algorithm = alg_name
+                payload = decoded
+                break
+            except Exception as e:
+                # Failed with this algorithm, try next
+                last_error = e
+                continue
 
-        # 7. Decrypt
-        message = EncryptionManager.decrypt(encrypted_token, encryption_key)
-        logger.info("Extract: decrypted message (%d chars)", len(message))
+        if not detected_algorithm:
+            error_msg = str(last_error) if last_error else "Unknown error"
+            if "InvalidToken" in error_msg or "Integrity mismatch" in error_msg:
+                error_msg = "Decryption failed — incorrect password or corrupted data"
+            elif "length prefix" in error_msg.lower() or "too short" in error_msg.lower() or "no steganography" in error_msg.lower():
+                error_msg = "No valid hidden message found, or wrong password was used."
+            raise ValueError(error_msg)
+
+        logger.info("Extract: success using %s", detected_algorithm)
+
+        # Generate report for extraction
+        report_name = f"report_extract_{uuid.uuid4().hex[:8]}.json"
+        report_path = os.path.join(UPLOAD_DIR, report_name)
+        report_data = {
+            "operation": "extract",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "filename": f.filename,
+            "detected_algorithm": detected_algorithm,
+            "message_length": len(message),
+            "integrity_verified": True,
+            "status": "success"
+        }
+        with open(report_path, "w") as rf:
+            json.dump(report_data, rf, indent=2)
 
         return jsonify({
             "success": True,
             "message": message,
             "message_length": len(message),
             "integrity_verified": True,
+            "algorithm": detected_algorithm,
+            "report_filename": report_name
         })
 
-    except InvalidToken:
-        logger.error("Extract: Fernet decryption failed (wrong password)")
-        return jsonify({
-            "error": "Decryption failed — incorrect password or corrupted data"
-        }), 400
     except Exception as exc:
         logger.error("Extract failed: %s", exc)
-        error_msg = str(exc)
-        # Provide user-friendly messages
-        if "InvalidToken" in error_msg:
-            error_msg = "Decryption failed — incorrect password or corrupted data"
-        return jsonify({"error": error_msg}), 400
+        return jsonify({"error": str(exc)}), 400
     finally:
         _cleanup(path)
 
@@ -322,6 +404,53 @@ def api_download(filename):
     return send_file(path, as_attachment=True, download_name=safe)
 
 
+@app.route("/api/report/<filename>")
+def api_report(filename):
+    """Serve a JSON report for download."""
+    safe = secure_filename(filename)
+    path = os.path.join(UPLOAD_DIR, safe)
+    if not os.path.isfile(path):
+        # Could be an embed report where the filename is output_filename + .report.json
+        alt_path = os.path.join(UPLOAD_DIR, safe + ".report.json")
+        if os.path.isfile(alt_path):
+            path = alt_path
+        else:
+            return jsonify({"error": "Report not found — it may have expired"}), 404
+
+    logger.info("Download Report: %s", safe)
+    return send_file(path, as_attachment=True, download_name=safe, mimetype="application/json")
+
+
+@app.route("/api/analyze", methods=["POST"])
+def api_analyze():
+    """Analyze a WAV file for steganography signatures."""
+    if "audio" not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
+
+    f = request.files["audio"]
+    if not _allowed(f.filename):
+        return jsonify({"error": "Only .wav files are supported"}), 400
+
+    path = _save_upload(f)
+    try:
+        logger.info("Analyze: started for %s", f.filename)
+        report = AudioAnalyzer.analyze(path)
+        
+        # Save report for download
+        report_name = f"report_analyze_{uuid.uuid4().hex[:8]}.json"
+        report_path = os.path.join(UPLOAD_DIR, report_name)
+        with open(report_path, "w") as rf:
+            json.dump(report, rf, indent=2)
+            
+        report["report_filename"] = report_name
+        return jsonify(report)
+    except Exception as exc:
+        logger.error("Analyze failed: %s", exc)
+        return jsonify({"error": str(exc)}), 400
+    finally:
+        _cleanup(path)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -337,6 +466,10 @@ if __name__ == "__main__":
     logger.info("AudioSteg server starting on http://127.0.0.1:%d", PORT)
     logger.info("Upload directory: %s", UPLOAD_DIR)
     logger.info("=" * 60)
+
+    # Start cleanup thread
+    cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True)
+    cleanup_thread.start()
 
     # Auto-open browser after Flask is ready
     threading.Timer(1.5, _open_browser, args=[PORT]).start()
