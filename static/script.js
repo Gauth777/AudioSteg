@@ -81,7 +81,7 @@
     async function fetchJsonSafely(url, options) {
         const res = await fetch(url, options);
         if (res.status === 413) {
-            throw new Error("File too large (413). Serverless hosts limit uploads (e.g. Vercel max 4.5 MB).");
+            throw new Error("File too large (413). The server or host (e.g. Vercel) has a limit on upload size.");
         }
         if (res.status === 504) {
             throw new Error("Request timed out (504). Processing took too long for the serverless function.");
