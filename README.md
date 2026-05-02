@@ -1,7 +1,6 @@
 # AudioSteg — Advanced Audio Steganography
 
-**Production-grade desktop tool** for embedding and extracting AES-encrypted
-messages within WAV audio files using multiple steganography algorithms.
+**Production-grade, desktop-capable** audio steganography tool for embedding and extracting Fernet-encrypted messages in WAV audio files using multiple steganography algorithms, steganalysis, and automated reporting.
 
 
 ---
@@ -27,17 +26,22 @@ messages within WAV audio files using multiple steganography algorithms.
 
 ```
 AudioSteg/
-├── app.py              # Flask server + REST API
-├── steg_engine.py      # Core engine (Strategy-based steganography engines)
-├── analysis.py         # Steganalysis and anomaly detection
-├── build.py            # PyInstaller build script
-├── requirements.txt    # Python dependencies
-├── activity.log        # Auto-generated operation log
+├── app.py               # Flask server + REST API
+├── steg_engine.py       # Core engine (strategy-based steganography engines)
+├── analysis.py          # Steganalysis and anomaly detection
+├── build.py             # PyInstaller build helper
+├── AudioSteg.spec       # PyInstaller spec for packaging
+├── test_roundtrip.py    # Basic round-trip validation script
+├── requirements.txt     # Python dependencies
 ├── templates/
-│   └── index.html      # Single-page UI
+│   └── index.html       # Single-page UI
 └── static/
-    ├── style.css       # Dark cybersecurity theme
-    └── script.js       # Frontend controller
+    ├── style.css        # Dark cybersecurity theme
+    └── script.js        # Frontend controller
+
+Generated at runtime:
+- activity.log           # Operation log
+- generated reports      # JSON reports for embed/extract/analyze flows
 ```
 
 ### Engine Classes
